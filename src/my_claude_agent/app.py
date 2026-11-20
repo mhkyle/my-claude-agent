@@ -1,44 +1,71 @@
+"""FastAPI HTTP layer: stateless /chat plus multi-turn sessions."""
+
 import asyncio
-import os
+import uuid
 
-from claude_agent_sdk import query, ClaudeAgentOptions, AssistantMessage, ResultMessage
+from claude_agent_sdk import ClaudeSDKClient
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-PROMPT = "Say hi"
+from .agent import build_options, format_message, stream
 
+app = FastAPI(title="my-claude-agent")
 
-async def main() -> None:
-    # Agentic loop: streams messages as Claude works
-    async for message in query(
-        prompt=PROMPT,
-        options=ClaudeAgentOptions(
-            model=os.environ.get("MODEL", "qwen3.8:27b"),
-            cwd=os.environ.get("CWD", "src/my_claude_agent"),
-            system_prompt="You are a helpful assistant with Cloud SRE expertise. You can help with code review, debugging, and fixing issues in Compute program code.",
-            max_turns=20,
-            allowed_tools=["Read", "Glob"],  # Auto-approve these tools
-            permission_mode="acceptEdits",  # Auto-approve file edits
-            setting_sources=[],  # don't pull ~/.claude config in
-            env={
-                "ANTHROPIC_BASE_URL": os.environ.get(
-                    "ANTHROPIC_BASE_URL", "http://localhost:11434"
-                ),
-                "ANTHROPIC_AUTH_TOKEN": os.environ.get("ANTHROPIC_AUTH_TOKEN", "ollama"),
-                "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
-                "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
-                "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
-            },
-        ),
-    ):
-        # Print human-readable output
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if hasattr(block, "text"):
-                    print(block.text)  # Claude's reasoning
-                elif hasattr(block, "name"):
-                    print(f"Tool: {block.name}")  # Tool being called
-        elif isinstance(message, ResultMessage):
-            print(f"Done: {message.subtype}")  # Final result
+sessions: dict[str, ClaudeSDKClient] = {}
+locks: dict[str, asyncio.Lock] = {}
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+class ChatRequest(BaseModel):
+    prompt: str
+
+
+class SessionCreate(BaseModel):
+    cwd: str | None = None
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/chat")
+async def chat(req: ChatRequest) -> StreamingResponse:
+    """One-shot request; a fresh agent process handles each call."""
+    return StreamingResponse(stream(req.prompt), media_type="text/plain")
+
+
+@app.post("/sessions")
+async def create_session(req: SessionCreate | None = None) -> dict[str, str]:
+    sid = uuid.uuid4().hex
+    client = ClaudeSDKClient(options=build_options(req.cwd if req else None))
+    await client.connect()
+    sessions[sid] = client
+    locks[sid] = asyncio.Lock()
+    return {"session_id": sid}
+
+
+@app.post("/sessions/{sid}/messages")
+async def send_message(sid: str, req: ChatRequest) -> StreamingResponse:
+    client = sessions.get(sid)
+    if client is None:
+        raise HTTPException(status_code=404, detail="no such session")
+
+    async def gen():
+        async with locks[sid]:  # one turn at a time per session
+            await client.query(req.prompt)
+            async for message in client.receive_response():
+                chunk = format_message(message)
+                if chunk:
+                    yield chunk + "\n"
+
+    return StreamingResponse(gen(), media_type="text/plain")
+
+
+@app.delete("/sessions/{sid}")
+async def close_session(sid: str) -> dict[str, bool]:
+    client = sessions.pop(sid, None)
+    if client is not None:
+        await client.disconnect()
+    locks.pop(sid, None)
+    return {"ok": True}

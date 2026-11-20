@@ -3,12 +3,12 @@ name = "my-claude-agent"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.15"
+requires-python = ">=3.12"
 dependencies = [
     "claude-agent-sdk>=0.2.186",
     "python-dotenv>=1.0.0",
     "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.32.0",
+    "uvicorn>=0.32.0",
 ]
 
 [project.scripts]
