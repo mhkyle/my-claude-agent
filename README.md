@@ -24,6 +24,31 @@ CWD=src/my_claude_agent
 > `ANTHROPIC_BASE_URL` must be the root URL — the CLI appends `/v1/messages`
 > itself. Do not add `/v1`.
 
+## Harness (`.claude/`)
+
+Agent behaviour is driven by the repo-root `.claude/` directory, plus a small
+root `CLAUDE.md` that imports the detailed knowledge:
+
+| Path | Purpose |
+| --- | --- |
+| `CLAUDE.md` | Role + project knowledge, loaded every session (imports `.claude/knowledge/`). |
+| `.claude/knowledge/` | Detailed project overview and gotchas. |
+| `.claude/agents/` | Subagents: `reviewer` (read-only) and `debugger`. |
+| `.claude/skills/` | Auto-invoked skills: `sre` and `compute`. |
+| `.claude/settings.json` | Permissions and a `PostToolUse` check hook. |
+| `.claude/settings.local.json` | Personal overrides (gitignored). |
+| `.claude/hooks/run-tests.sh` | Non-blocking post-edit check. |
+| `.mcp.json` / `.mcp.json.example` | MCP config (empty by default; see the example). |
+
+How it is wired in `agent.build_options()`: `cwd` defaults to the repo root,
+`setting_sources=["project", "local"]` loads this harness (excluding
+`~/.claude`), `system_prompt` uses the `claude_code` preset so `CLAUDE.md`
+augments it, `skills="all"` enables the skills, and `Agent` is allowed so the
+subagents can be invoked.
+
+> The SDK loads `.claude/` from `<cwd>/.claude/`, so run the agent from the repo
+> root (keep `CWD=.` in `.env`).
+
 ## CLI
 
 ```bash

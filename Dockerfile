@@ -25,6 +25,8 @@ COPY README.md ./
 COPY src ./src
 RUN uv sync --frozen --no-dev
 
+# The harness (.claude/, CLAUDE.md, .mcp.json) is supplied by the host mount at
+# /work (see README); CWD=/work points the agent at it. Nothing is baked in.
 ENV PATH="/app/.venv/bin:$PATH" \
     HOME=/data \
     CLAUDE_CONFIG_DIR=/data/claude \
