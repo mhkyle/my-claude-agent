@@ -91,7 +91,7 @@ Build and run, mounting a workspace at `/work`:
 
 ```bash
 docker build -t my-claude-agent .
-docker run --rm -p 8080:8080 -v "$PWD:/work" my-claude-agent
+docker run --rm -p 8080:9999 -v "$PWD:/work" my-claude-agent
 curl -N -X POST localhost:8080/chat \
   -H 'content-type: application/json' -d '{"prompt":"review utils.py"}'
 ```

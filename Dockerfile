@@ -38,6 +38,6 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 RUN mkdir -p /data/claude /work
 
-EXPOSE 8080
+EXPOSE 9999
 
-CMD ["uvicorn", "my_claude_agent.app:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "my_claude_agent.app:app", "--host", "0.0.0.0", "--port", "9999"]
